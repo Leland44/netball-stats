@@ -58,6 +58,7 @@ input,select,textarea{font-family:inherit;font-size:16px}/* 16px prevents iOS zo
 .page{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;display:none;padding-bottom:76px}
 .page.active{display:block}
 .hidden{display:none!important}
+#live-setup,#live-game{width:100%}
 
 /* ── BOTTOM TAB BAR ── */
 .tab-bar{height:60px;background:var(--bg2);border-top:1px solid var(--border);display:flex;position:fixed;bottom:0;left:0;right:0;z-index:100}
@@ -370,8 +371,6 @@ hr{border:none;border-top:0.5px solid var(--border);margin:10px 16px}
           </div>
         </div>
 
-        </div>
-
         <div class="section-label">Game details</div>
         <div class="card">
           <div class="field"><label>Opponent</label><input id="lg-opp" placeholder="e.g. Western Wolves" type="text" autocorrect="off"></div>
@@ -382,8 +381,8 @@ hr{border:none;border-top:0.5px solid var(--border);margin:10px 16px}
           <div class="field"><label>Quarter duration</label>
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px" id="dur-btns">
               <button class="btn btn-sm btn-secondary" onclick="setDur(10,this)">10 min</button>
-              <button class="btn btn-sm btn-secondary active-dur" onclick="setDur(15,this)" style="background:var(--green);color:#fff">15 min</button>
               <button class="btn btn-sm btn-secondary" onclick="setDur(12,this)">12 min</button>
+              <button class="btn btn-sm btn-secondary active-dur" onclick="setDur(15,this)" style="background:var(--green);color:#fff">15 min</button>
             </div>
           </div>
         </div>
@@ -440,6 +439,7 @@ hr{border:none;border-top:0.5px solid var(--border);margin:10px 16px}
               <button class="btn btn-sm btn-primary" id="timer-btn" onclick="timerToggle()" style="min-width:80px"><i class="ti ti-player-play"></i> Start</button>
               <button class="btn btn-sm btn-secondary" onclick="timerReset()"><i class="ti ti-refresh"></i></button>
               <button class="btn btn-sm btn-amber" id="nq-btn" onclick="nextQ()" style="display:none;min-width:110px"><i class="ti ti-player-skip-forward"></i> Next Q</button>
+              <button class="btn btn-sm btn-success" id="end-game-btn" onclick="finishLive()" style="display:none;min-width:110px"><i class="ti ti-check"></i> End game</button>
             </div>
           </div>
           <div class="prog-bar"><div class="prog-fill" id="prog-fill" style="width:100%"></div></div>
@@ -475,9 +475,7 @@ hr{border:none;border-top:0.5px solid var(--border);margin:10px 16px}
           <div id="quick-stat-area" style="display:none">
             <div id="selected-player-bar" style="padding:4px 16px 8px;font-size:13px;font-weight:500;color:var(--text2)"></div>
             <div class="quick-grid" id="quick-grid"></div>
-            <div style="padding:10px 16px 0">
-              <button class="btn btn-sm btn-secondary" onclick="showAllStats()" style="font-size:13px"><i class="ti ti-adjustments-horizontal"></i> All stats</button>
-            </div>
+
           </div>
         </div>
 
@@ -700,9 +698,9 @@ function fmtTime(s){return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s
 function initials(n){return n.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();}
 function pp(pid){return liveGame&&liveGame.playingPos?liveGame.playingPos[pid]:null;}
 
-function toast(msg,ok=true){
+function toast(msg,ok=true,type=null){
   const el=document.createElement('div');
-  el.style.cssText='position:fixed;bottom:76px;left:50%;transform:translateX(-50%);background:'+(ok?'var(--green)':'var(--red)')+';color:#fff;padding:10px 18px;border-radius:20px;font-size:14px;font-weight:600;z-index:999;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,.2)';
+  const bg=type==='info'?'var(--blue)':ok?'var(--green)':'var(--red)';el.style.cssText='position:fixed;bottom:76px;left:50%;transform:translateX(-50%);background:'+bg+';color:#fff;padding:10px 18px;border-radius:20px;font-size:14px;font-weight:600;z-index:999;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,.2)';
   el.textContent=msg;document.body.appendChild(el);setTimeout(()=>el.remove(),2000);
 }
 
@@ -786,13 +784,28 @@ function updateSetupLabels(){
   const as=getAS();const sq=getSquad();
   const el=document.getElementById('setup-season-lbl');if(el)el.textContent=(sq?sq.name:'No squad')+' · '+(as?as.name:'No season');
 }
+function autoFillLineup(){
+  lineup={};
+  // First pass: fill preferred positions
+  getPlayers().forEach(p=>{
+    if(p.pos&&ALL_POS.includes(p.pos)&&!lineup[p.pos]&&!Object.values(lineup).includes(p.id)){
+      lineup[p.pos]=p.id;
+    }
+  });
+  // Second pass: fill remaining positions with unassigned players
+  const unassigned=getPlayers().filter(p=>!Object.values(lineup).includes(p.id));
+  const unfilled=ALL_POS.filter(pos=>!lineup[pos]);
+  unassigned.forEach((p,i)=>{if(unfilled[i])lineup[unfilled[i]]=p.id;});
+}
 function renderLineupBuilder(){
   const sq=getSquad();const lbl=document.getElementById('active-squad-lbl');if(lbl)lbl.textContent=sq.name;
+  // Auto-fill if lineup is empty and we have players
+  if(Object.keys(lineup).length===0&&getPlayers().length>0)autoFillLineup();
   const assignedIds=Object.values(lineup);
   const filled=Object.keys(lineup).length;
   const sc=document.getElementById('lineup-count');const ls=document.getElementById('lineup-status');
   if(sc)sc.textContent=`(${filled}/7)`;
-  if(ls){ls.className='lineup-status '+(filled===7?'ls-ok':'ls-warn');ls.textContent=filled===7?'✓ All 7 positions filled — ready!':'⚠ Tap a position, then a player to assign';}
+  if(ls){ls.className='lineup-status '+(filled===7?'ls-ok':'ls-warn');ls.textContent=filled===7?'✓ All 7 positions filled — ready!':'⚠ Tap a position to reassign a player';}
   const pg=document.getElementById('pos-grid');
   if(pg)pg.innerHTML=ALL_POS.map(pos=>{const pid=lineup[pos];const p=pid?getPlayers().find(pl=>pl.id===pid):null;const isPref=p&&p.pos===pos;return`<div class="pos-slot${p?' filled':''}${selSlot===pos?' sel':''}" onclick="selPos('${pos}')"><div class="slot-label">${pos}</div>${p?`<div class="slot-name">${p.name}</div><div class="slot-note">${isPref?'✓ preferred':'Out of pos'}</div>`:''}</div>`;}).join('');
   const bs=document.getElementById('bench-scroll');
@@ -814,11 +827,26 @@ function updateTimerUI(){
 function timerToggle(){
   if(timerRun){clearInterval(timerInt);timerRun=false;const b=document.getElementById('timer-btn');if(b)b.innerHTML='<i class="ti ti-player-play"></i> Resume';const qd=document.getElementById('qd'+curQ);if(qd)qd.classList.replace('active','paused');}
   else{timerRun=true;const b=document.getElementById('timer-btn');if(b)b.innerHTML='<i class="ti ti-player-pause"></i> Pause';const qd2=document.getElementById('qd'+curQ);if(qd2)qd2.classList.add('active');
+    // Show Next Q as soon as timer is running (allow early skip)
+    if(curQ<4){document.getElementById('nq-btn').style.display='flex';document.getElementById('end-game-btn').style.display='none';}
+    else{document.getElementById('nq-btn').style.display='none';document.getElementById('end-game-btn').style.display='flex';}
     timerInt=setInterval(()=>{if(timerRem>0){timerRem--;updateTimerUI();}else{clearInterval(timerInt);timerRun=false;qEnded();}},1000);}
 }
 function timerReset(){clearInterval(timerInt);timerRun=false;timerRem=qDur;updateTimerUI();const b=document.getElementById('timer-btn');if(b)b.innerHTML='<i class="ti ti-player-play"></i> Start';document.getElementById('nq-btn').style.display='none';}
-function qEnded(){const b=document.getElementById('timer-btn');if(b)b.innerHTML='<i class="ti ti-player-play"></i> Start';const qd=document.getElementById('qd'+curQ);if(qd)qd.className='q-dot done';if(curQ<4)document.getElementById('nq-btn').style.display='flex';else toast('Final quarter ended!');}
-function nextQ(){document.getElementById('qd'+curQ).className='q-dot done';curQ++;document.getElementById('q-label').textContent='Quarter '+curQ;document.getElementById('qd'+curQ).className='q-dot active';timerRem=qDur;timerRun=false;document.getElementById('timer-btn').innerHTML='<i class="ti ti-player-play"></i> Start';document.getElementById('nq-btn').style.display='none';updateTimerUI();const tb=document.getElementById('timer-btn');if(tb)tb.innerHTML='<i class="ti ti-player-play"></i> Start';}
+function qEnded(){const b=document.getElementById('timer-btn');if(b)b.innerHTML='<i class="ti ti-player-play"></i> Start';const qd=document.getElementById('qd'+curQ);if(qd)qd.className='q-dot done';
+  if(curQ<4){document.getElementById('nq-btn').style.display='flex';document.getElementById('end-game-btn').style.display='none';}
+  else{document.getElementById('nq-btn').style.display='none';document.getElementById('end-game-btn').style.display='flex';toast('Final quarter ended — tap End game to save!','info');}}
+function nextQ(){
+  document.getElementById('qd'+curQ).className='q-dot done';
+  curQ++;
+  document.getElementById('q-label').textContent='Quarter '+curQ;
+  document.getElementById('qd'+curQ).className='q-dot active';
+  timerRem=qDur;timerRun=false;
+  document.getElementById('timer-btn').innerHTML='<i class="ti ti-player-play"></i> Start';
+  document.getElementById('nq-btn').style.display='none';
+  document.getElementById('end-game-btn').style.display='none';
+  updateTimerUI();
+}
 
 // ════════════════════════════════════════════════
 //  CP TIMING
@@ -852,11 +880,11 @@ function startLive(){
   document.getElementById('my-team-lbl').textContent=S.teamName||'Us';document.getElementById('opp-lbl').textContent=opp;
   curQ=1;timerRem=qDur;timerRun=false;clearInterval(timerInt);cpTs=null;clearInterval(cpInt);
   [1,2,3,4].forEach(i=>{const d=document.getElementById('qd'+i);if(d)d.className='q-dot'+(i===1?' active':'');});
-  document.getElementById('q-label').textContent='Quarter 1';document.getElementById('timer-btn').innerHTML='<i class="ti ti-player-play"></i> Start';document.getElementById('nq-btn').style.display='none';
+  document.getElementById('q-label').textContent='Quarter 1';document.getElementById('timer-btn').innerHTML='<i class="ti ti-player-play"></i> Start';document.getElementById('nq-btn').style.display='none';document.getElementById('end-game-btn').style.display='none';
   undoStack=[];hideUndo();updateTimerUI();document.getElementById('cp-strip').style.display='none';
+  const lp=document.getElementById('page-live');if(lp)lp.scrollTop=0;
   document.getElementById('live-setup').classList.add('hidden');
   document.getElementById('live-game').classList.remove('hidden');
-  const lp=document.getElementById('page-live');if(lp)lp.scrollTop=0;
   selPid=null;renderPlayerScroll();updateScore();setLiveTab('stats',document.getElementById('lt-stats-btn'));
 }
 
@@ -884,12 +912,12 @@ function selectPlayer(pid){
 }
 
 function renderQuickGrid(p,pos){
-  const cfg=POS_QUICK[pos||p.pos||'']||POS_QUICK[''];
+  const cfg=[{k:'goals',l:'Goal',i:'🥅',c:'goal',big:true},{k:'attempts',l:'Miss',i:'❌',c:'miss',big:true},{k:'intercepts',l:'Intercept',i:'🙌',c:'int',big:true},{k:'deflections',l:'Deflect',i:'✋',c:'defl',big:true},{k:'feeds',l:'Feed',i:'🤝',c:'feed',big:true},{k:'centrepasses',l:'Ctr pass',i:'⚡',c:'cp',big:true}];
   const s=liveGame.playerStats[p.id]||mkStats();
-  document.getElementById('quick-grid').innerHTML=cfg.map(q=>`<button class="qbtn ${q.c}${q.big?' big':''}" onclick="quickTap(${p.id},'${q.k}')">
+  document.getElementById('quick-grid').innerHTML=cfg.map(q=>`<button class="qbtn ${q.c} big" onclick="quickTap(${p.id},'${q.k}')">
     <span class="icon">${q.i}</span><span class="lbl">${q.l}</span><span class="cnt">${s[q.k]||''}</span>
   </button>`).join('');
-  document.getElementById('quick-grid').className='quick-grid'+(cfg.length<=4?' two-col':'');
+  document.getElementById('quick-grid').className='quick-grid';
 }
 
 function quickTap(pid,key){
@@ -898,8 +926,8 @@ function quickTap(pid,key){
   else if((key==='goals'||key==='attempts')&&cpTs!==null){const e=stopCP(key==='goals');if(e!==null)liveGame.cpToGoalEvents.push({cpTs:0,goalTs:e,scored:key==='goals'});}
   liveGame.playerStats[pid][key]++;undoStack.push({pid,key,delta:1});if(undoStack.length>30)undoStack.shift();
   const pn=getPlayers().find(pl=>pl.id===pid)?.name||'';showUndo(`+1 ${STAT_SHORT[key]} — ${pn}`);
-  const p=getPlayers().find(pl=>pl.id===pid);const pos=pp(pid);const cfg=POS_QUICK[pos||p.pos||'']||POS_QUICK[''];
-  const idx=cfg.findIndex(q=>q.k===key);const btns=document.querySelectorAll('.qbtn');if(btns[idx]){btns[idx].classList.add('flash');setTimeout(()=>btns[idx].classList.remove('flash'),250);}
+  const allCfg=[{k:'goals'},{k:'attempts'},{k:'intercepts'},{k:'deflections'},{k:'feeds'},{k:'centrepasses'}];
+  const idx=allCfg.findIndex(q=>q.k===key);const btns=document.querySelectorAll('.qbtn');if(btns[idx]){btns[idx].classList.add('flash');setTimeout(()=>btns[idx].classList.remove('flash'),250);}
   // Update count on button
   const cntEls=document.querySelectorAll('.qbtn .cnt');if(cntEls[idx])cntEls[idx].textContent=liveGame.playerStats[pid][key]||'';
   refreshChip(pid);updateScore();
@@ -911,18 +939,6 @@ function refreshChip(pid){
   const cs=ch.querySelector('.chip-stats');if(cs)cs.textContent=(s.goals>0?'⚽'+s.goals+' ':'')+( s.intercepts>0?'🙌'+s.intercepts:'')+( tf>0?' 🟡'+tf:'');
 }
 
-function showAllStats(){
-  const p=getPlayers().find(pl=>pl.id===selPid);if(!p)return;
-  const s=liveGame.playerStats[p.id]||mkStats();
-  openSheet(`<span class="sheet-handle"></span><div class="sheet-title">${p.name} — All stats</div>
-    ${STAT_KEYS.map(k=>`<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:0.5px solid var(--border)">
-      <span style="flex:1;font-size:15px">${STAT_LABELS[k]}</span>
-      <button onclick="adjStat(${p.id},'${k}',-1)" style="width:36px;height:36px;border-radius:50%;background:var(--bg3);font-size:20px;display:flex;align-items:center;justify-content:center">−</button>
-      <span style="font-size:18px;font-weight:700;min-width:32px;text-align:center" id="ss-${k}">${s[k]||0}</span>
-      <button onclick="adjStat(${p.id},'${k}',1)" style="width:36px;height:36px;border-radius:50%;background:var(--green);color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center">+</button>
-    </div>`).join('')}
-    <div style="padding:16px"><button class="btn btn-secondary btn-full" onclick="closeSheet()">Done</button></div>`);
-}
 function adjStat(pid,key,delta){
   if(!liveGame.playerStats[pid])liveGame.playerStats[pid]=mkStats();
   liveGame.playerStats[pid][key]=Math.max(0,(liveGame.playerStats[pid][key]||0)+delta);
